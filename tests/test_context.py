@@ -349,7 +349,7 @@ def test_wgpu_context_view_formats():
         device=device, format=wgpu.TextureFormat.rgba8unorm_srgb, usage=usage
     )
     texture2 = context2.get_current_texture()
-    with pytest.raises(Exception):
+    with pytest.raises(wgpu.GPUValidationError, match="view format"):
         texture2.create_view(format=wgpu.TextureFormat.rgba8unorm)
 
 
