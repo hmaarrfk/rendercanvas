@@ -296,26 +296,6 @@ def test_wgpu_context_hdr():
     assert np.all(result * 255 == bitmap)
 
 
-def _create_texture_supports_view_formats(device):
-    """Whether the wgpu backend implements create_texture(view_formats=...).
-
-    It raised NotImplementedError until pygfx/wgpu-py#832, so the test below
-    would fail for a reason that has nothing to do with rendercanvas.
-    """
-    import wgpu
-
-    try:
-        device.create_texture(
-            size=(4, 4, 1),
-            format=wgpu.TextureFormat.rgba8unorm_srgb,
-            usage=wgpu.TextureUsage.RENDER_ATTACHMENT,
-            view_formats=[wgpu.TextureFormat.rgba8unorm],
-        )
-    except NotImplementedError:
-        return False
-    return True
-
-
 @pytest.mark.skipif(not can_use_wgpu_lib, reason="Needs wgpu lib")
 def test_wgpu_context_view_formats():
     # A format passed to configure() must reach the present texture, or a view
@@ -323,9 +303,6 @@ def test_wgpu_context_view_formats():
     import wgpu
 
     device = wgpu.utils.get_default_device()
-    if not _create_texture_supports_view_formats(device):
-        pytest.skip("wgpu backend does not implement create_texture(view_formats)")
-
     usage = wgpu.TextureUsage.RENDER_ATTACHMENT | wgpu.TextureUsage.TEXTURE_BINDING
 
     canvas = ManualOffscreenRenderCanvas()
@@ -336,7 +313,19 @@ def test_wgpu_context_view_formats():
         usage=usage,
         view_formats=[wgpu.TextureFormat.rgba8unorm],
     )
-    texture = context.get_current_texture()
+
+    try:
+        texture = context.get_current_texture()
+    except NotImplementedError:
+        # create_texture() itself refuses view_formats: that is pygfx/wgpu-py#832,
+        # which is not in a wgpu release yet. Fail rather than skip -- a skip
+        # would leave this pass-through unverified while CI stayed green, and
+        # this test is the thing that tells us when the release lands.
+        pytest.fail(
+            f"wgpu {wgpu.__version__} does not implement create_texture(view_formats=..),"
+            " which this needs; see pygfx/wgpu-py#832"
+        )
+
     assert texture.format == wgpu.TextureFormat.rgba8unorm_srgb
     # The declared format is viewable: this is what the parameter is for.
     assert texture.create_view(format=wgpu.TextureFormat.rgba8unorm) is not None
